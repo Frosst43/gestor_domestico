@@ -12,7 +12,16 @@ data class ShoppingList(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "categories", foreignKeys = [ForeignKey(entity = ShoppingList::class, parentColumns = ["id"], childColumns = ["listId"], onDelete = ForeignKey.CASCADE)], indices = [Index("listId")])
+@Entity(
+    tableName = "categories",
+    foreignKeys = [ForeignKey(
+        entity = ShoppingList::class,
+        parentColumns = ["id"],
+        childColumns = ["listId"],
+        onDelete = ForeignKey.CASCADE
+    )],
+    indices = [Index("listId")]
+)
 data class Category(
     @PrimaryKey val id: String,
     val listId: String,
@@ -20,7 +29,16 @@ data class Category(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "products", foreignKeys = [ForeignKey(entity = Category::class, parentColumns = ["id"], childColumns = ["categoryId"], onDelete = ForeignKey.CASCADE)], indices = [Index("categoryId")])
+@Entity(
+    tableName = "products",
+    foreignKeys = [ForeignKey(
+        entity = Category::class,
+        parentColumns = ["id"],
+        childColumns = ["categoryId"],
+        onDelete = ForeignKey.CASCADE
+    )],
+    indices = [Index("categoryId")]
+)
 data class Product(
     @PrimaryKey val id: String,
     val categoryId: String,
@@ -33,7 +51,7 @@ data class Product(
 
 @Dao
 interface ShoppingDao {
-    @Query("SELECT * FROM shopping_lists ORDER BY createdAt, id")
+    @Query("SELECT * FROM shopping_lists ORDER BY createdAt DESC, id")
     fun observeLists(): Flow<List<ShoppingList>>
 
     @Query("SELECT * FROM categories ORDER BY name COLLATE NOCASE")
@@ -45,6 +63,21 @@ interface ShoppingDao {
     @Insert suspend fun addList(value: ShoppingList)
     @Insert suspend fun addCategory(value: Category)
     @Insert suspend fun addProduct(value: Product)
+
+    @Query("UPDATE shopping_lists SET name = :name, updatedAt = :time WHERE id = :id")
+    suspend fun renameList(id: String, name: String, time: Long = System.currentTimeMillis())
+
+    @Query("UPDATE categories SET name = :name, updatedAt = :time WHERE id = :id")
+    suspend fun renameCategory(id: String, name: String, time: Long = System.currentTimeMillis())
+
+    @Query("UPDATE products SET name = :name, quantity = :quantity, notes = :notes, updatedAt = :time WHERE id = :id")
+    suspend fun editProduct(
+        id: String,
+        name: String,
+        quantity: String,
+        notes: String,
+        time: Long = System.currentTimeMillis()
+    )
 
     @Query("UPDATE shopping_lists SET archived = :archived, updatedAt = :time WHERE id = :id")
     suspend fun archiveList(id: String, archived: Boolean, time: Long = System.currentTimeMillis())
@@ -77,17 +110,27 @@ interface ShoppingDao {
     suspend fun duplicateList(source: ShoppingList, newId: () -> String) {
         val listId = newId()
         addList(ShoppingList(id = listId, name = source.name + " (copia)"))
-        categoriesForList(source.id).forEach { oldCategory ->
+        categoriesForList(source.id).forEach { category ->
             val categoryId = newId()
-            addCategory(Category(id = categoryId, listId = listId, name = oldCategory.name))
-            productsForCategory(oldCategory.id).forEach { oldProduct ->
-                addProduct(Product(id = newId(), categoryId = categoryId, name = oldProduct.name, quantity = oldProduct.quantity, notes = oldProduct.notes))
+            addCategory(Category(id = categoryId, listId = listId, name = category.name))
+            productsForCategory(category.id).forEach { product ->
+                addProduct(Product(
+                    id = newId(),
+                    categoryId = categoryId,
+                    name = product.name,
+                    quantity = product.quantity,
+                    notes = product.notes
+                ))
             }
         }
     }
 }
 
-@Database(entities = [ShoppingList::class, Category::class, Product::class], version = 1, exportSchema = false)
+@Database(
+    entities = [ShoppingList::class, Category::class, Product::class],
+    version = 1,
+    exportSchema = false
+)
 abstract class ShoppingDatabase : RoomDatabase() {
     abstract fun shoppingDao(): ShoppingDao
 }

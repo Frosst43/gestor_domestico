@@ -1,27 +1,28 @@
-# Gestor domestico (Android)
+# Gestor doméstico
 
-Aplicacion de listas de compra universales. Estructura: **listas -> categorias -> productos**.
+Aplicación Android para compras universales, no limitada a alimentación.
 
-## Estado
-Implementacion Android inicial en rama de desarrollo. Sin APK verificado ni pruebas en movil aun.
+**Organización:** listas independientes → categorías → productos. No existe un límite artificial de listas ni de categorías. Nombres como «Compra semanal», «Componentes PC» y «Necesidades casa» son ejemplos, no listas obligatorias.
 
-## Funciones incluidas en esta base
-- Listas ilimitadas, categorias personalizadas y productos con cantidad.
-- Marcar/desmarcar comprado: marca verde, texto tachado y productos al final.
-- Progreso por lista y aviso de compra completada.
-- Duplicar una lista con sus categorias y productos (la copia arranca pendiente).
-- Archivar, recuperar, reutilizar, vaciar comprados, eliminar listas/categorias/productos.
-- Confirmacion para operaciones destructivas.
-- Datos locales Room/SQLite, sin permisos de Internet.
+## Base de desarrollo 0.1.0
 
-## Compilacion
-Abrir la carpeta raiz en Android Studio, usando JDK 17 y Android SDK 35. Sincronizar Gradle y ejecutar el modulo `app`. Si se usa terminal, generar el Gradle wrapper desde una instalacion confiable con `gradle wrapper --gradle-version 8.14`; no se ha incluido un JAR binario de wrapper.
+- Crear y renombrar listas y categorías.
+- Crear y editar productos (nombre, cantidad/unidad, notas).
+- Marcar comprado con casilla verde y tachado visible: los comprados pasan al final de su categoría.
+- Progreso y aviso de compra completada solo cuando hay productos y todos están comprados.
+- Duplicar lista: se copian sus categorías y productos, que comienzan todos pendientes.
+- Archivar/recuperar listas, reutilizar (desmarcar), vaciar comprados y eliminar.
+- Confirmación antes de borrar listas, categorías o productos y antes de limpiar/restablecer.
+- Datos locales Room/SQLite sin acceso a Internet.
 
-## Pendiente antes de calificarla como v1.0
-- Compilacion y pruebas reales en dispositivo Android.
-- Editar nombres, notas de productos, orden manual, buscador y mejoras de accesibilidad.
-- Pruebas automatizadas y exportacion/copia de seguridad.
-- Sincronizacion entre dos moviles, control de gastos y presupuestos: futuras versiones.
+## Compilación
 
-## Politica de datos
-No subir bases de datos personales, credenciales ni archivos APK privados al repositorio.
+Abrir la carpeta raíz en Android Studio con JDK 17 y SDK 35. Para la línea de comandos se necesita Gradle 8.14 (la rama todavía no incorpora los binarios del wrapper); ejecutar `gradle :app:testDebugUnitTest :app:assembleDebug`. El flujo GitHub Actions realiza exactamente esta compilación y publica un APK debug como artefacto **solo si termina correctamente**.
+
+## Seguridad y restricciones
+
+La app no necesita permisos de red. El respaldo automático de Android está deshabilitado por el momento: desinstalar o borrar datos de la app elimina la base local. Antes de uso con datos importantes implementaremos exportación/restauración y copia de seguridad verificable.
+
+## Pendiente
+
+Compilación y prueba con dispositivo real; mejoras de accesibilidad, buscador y recuperación/exportación; sincronización entre dos móviles, gastos, presupuestos y estadísticas para versiones futuras. No fusionar en `main` sin validación.
