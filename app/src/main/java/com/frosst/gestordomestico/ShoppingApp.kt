@@ -97,6 +97,7 @@ fun ShoppingApp(
     var archived by remember { mutableStateOf(false) }
     var themeDialogVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var quickAddListId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(listId, categoryId, archived) { searchQuery = "" }
     var edit by remember { mutableStateOf<EditRequest?>(null) }
     var confirm by remember { mutableStateOf<ConfirmRequest?>(null) }
@@ -122,6 +123,17 @@ fun ShoppingApp(
 
     fun requestDeletion(name: String, explanation: String, action: () -> Unit) {
         confirm = ConfirmRequest("Eliminar $name", explanation, action)
+    }
+
+    fun openQuickAdd(targetListId: String) {
+        if (categories.none { it.listId == targetListId }) {
+            // First create a category: products must belong to one.
+            listId = targetListId
+            categoryId = null
+            edit = EditRequest(EditKind.CATEGORY)
+        } else {
+            quickAddListId = targetListId
+        }
     }
 
     Scaffold(
@@ -206,6 +218,7 @@ fun ShoppingApp(
                                     listId = shoppingList.id
                                     categoryId = null
                                 },
+                                onQuickAdd = { openQuickAdd(shoppingList.id) },
                                 onRename = { edit = EditRequest(EditKind.LIST, shoppingList.id, shoppingList.name) },
                                 onDuplicate = { scope.launch {
                                     dao.duplicateList(shoppingList, ::uniqueId)
@@ -239,6 +252,12 @@ fun ShoppingApp(
                     }
                 }
                 categoryId == null -> {
+                    if (selectedList?.archived == false && categories.any { it.listId == listId }) {
+                        OutlinedButton(
+                            onClick = { listId?.let { openQuickAdd(it) } },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                        ) { Text("+ Añadir producto") }
+                    }
                     val visible = categories.filter {
                         it.listId == listId && it.name.contains(searchQuery, ignoreCase = true)
                     }
@@ -321,6 +340,29 @@ fun ShoppingApp(
                 }
             }
         }
+    }
+
+    val quickTarget = lists.firstOrNull { it.id == quickAddListId && !it.archived }
+    val quickCategories = quickTarget?.let { target -> categories.filter { it.listId == target.id } }.orEmpty()
+    if (quickTarget != null && quickCategories.isNotEmpty()) {
+        QuickAddDialog(
+            listName = quickTarget.name,
+            listId = quickTarget.id,
+            categories = quickCategories,
+            onDismiss = { quickAddListId = null },
+            onSave = { selectedCategoryId, name, quantity, notes ->
+                dao.addProduct(
+                    Product(
+                        id = uniqueId(),
+                        categoryId = selectedCategoryId,
+                        name = name,
+                        quantity = quantity,
+                        notes = notes
+                    )
+                )
+                scope.launch { snackbar.showSnackbar("Producto añadido a «${quickTarget.name}»") }
+            }
+        )
     }
 
     if (showBackupDialog) {
@@ -500,6 +542,7 @@ private fun ShoppingListCard(
     list: ShoppingList,
     progress: ShoppingProgress,
     onOpen: () -> Unit,
+    onQuickAdd: () -> Unit,
     onRename: () -> Unit,
     onDuplicate: () -> Unit,
     onArchive: () -> Unit,
@@ -530,6 +573,9 @@ private fun ShoppingListCard(
                     progress = { progress.fraction },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
                 )
+            }
+            if (!list.archived) {
+                TextButton(onClick = onQuickAdd) { Text("+ Añadir producto") }
             }
             if (progress.completed) {
                 Text("✓ Compra completada", color = purchasedGreen)
@@ -654,5 +700,130 @@ private fun EditDialog(
             ) { Text("Guardar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+/**
+ * Add products without navigating through every category.
+ * The selected category is kept when adding several products in a row.
+ */
+@Composable
+private fun QuickAddDialog(
+    listName: String,
+    listId: String,
+    categories: List<Category>,
+    onDismiss: () -> Unit,
+    onSave: suspend (String, String, String, String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var name by remember(listId) { mutableStateOf("") }
+    var quantity by remember(listId) { mutableStateOf("") }
+    var notes by remember(listId) { mutableStateOf("") }
+    var categoryId by remember(listId) { mutableStateOf(categories.first().id) }
+    var categoryMenuOpen by remember { mutableStateOf(false) }
+    var keepAdding by remember { mutableStateOf(true) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val selectedCategory = categories.firstOrNull { it.id == categoryId } ?: categories.first()
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Añadir a «$listName»") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box {
+                    OutlinedButton(onClick = { categoryMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Categoría: ${selectedCategory.name} ▾")
+                    }
+                    DropdownMenu(
+                        expanded = categoryMenuOpen,
+                        onDismissRequest = { categoryMenuOpen = false }
+                    ) {
+                        categories.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.name) },
+                                onClick = {
+                                    categoryId = category.id
+                                    categoryMenuOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Producto") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = { Text("Cantidad y unidad (opcional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notas (opcional)") },
+                    minLines = 2,
+                    maxLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = keepAdding,
+                        enabled = !saving,
+                        onCheckedChange = { keepAdding = it }
+                    )
+                    Text("Seguir añadiendo")
+                }
+                if (error != null) {
+                    Text(
+                        text = error ?: "",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank() && !saving,
+                onClick = {
+                    saving = true
+                    error = null
+                    scope.launch {
+                        try {
+                            onSave(
+                                selectedCategory.id,
+                                name.trim(),
+                                quantity.trim(),
+                                notes.trim()
+                            )
+                            if (keepAdding) {
+                                name = ""
+                                quantity = ""
+                                notes = ""
+                            } else {
+                                onDismiss()
+                            }
+                        } catch (e: Exception) {
+                            error = "No se pudo guardar el producto: ${e.message ?: "error desconocido"}"
+                        } finally {
+                            saving = false
+                        }
+                    }
+                }
+            ) { Text(if (saving) "Guardando..." else "Añadir") }
+        },
+        dismissButton = {
+            TextButton(enabled = !saving, onClick = onDismiss) { Text("Cerrar") }
+        }
     )
 }

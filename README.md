@@ -11,6 +11,7 @@ Aplicación Android para compras universales, no limitada a alimentación.
 - Cabecera compatible con la barra de estado de Android; títulos largos abreviados sin solaparse.
 - Mensajes específicos cuando una búsqueda no devuelve resultados.
 - Crear y editar productos (nombre, cantidad/unidad, notas).
+- Añadir productos rápidamente desde una lista: elegir categoría y apuntar varios seguidos sin navegar a cada categoría.
 - Buscar listas, categorías y productos (por nombre o notas).
 - Al completar una compra, acceso visible a reutilizar, archivar o eliminar.
 - Marcar comprado con casilla verde y tachado visible: los comprados pasan al final de su categoría.
