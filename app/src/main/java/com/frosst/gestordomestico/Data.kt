@@ -106,6 +106,34 @@ interface ShoppingDao {
     @Query("SELECT * FROM products WHERE categoryId = :categoryId")
     suspend fun productsForCategory(categoryId: String): List<Product>
 
+    @Query("SELECT * FROM shopping_lists")
+    suspend fun allLists(): List<ShoppingList>
+
+    @Query("SELECT * FROM categories")
+    suspend fun allCategories(): List<Category>
+
+    @Query("SELECT * FROM products")
+    suspend fun allProducts(): List<Product>
+
+    @Query("DELETE FROM shopping_lists")
+    suspend fun deleteAllLists(): Unit
+
+    @Transaction
+    suspend fun exportBackup(): ShoppingBackup = ShoppingBackup(
+        lists = allLists(),
+        categories = allCategories(),
+        products = allProducts()
+    )
+
+    // Room executes this method in a single transaction; failed imports roll back.
+    @Transaction
+    suspend fun restoreBackup(backup: ShoppingBackup) {
+        deleteAllLists()
+        backup.lists.forEach { addList(it) }
+        backup.categories.forEach { addCategory(it) }
+        backup.products.forEach { addProduct(it) }
+    }
+
     @Transaction
     suspend fun duplicateList(source: ShoppingList, newId: () -> String) {
         val listId = newId()

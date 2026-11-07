@@ -19,6 +19,9 @@ Aplicación Android para compras universales, no limitada a alimentación.
 - Archivar/recuperar listas, reutilizar (desmarcar), vaciar comprados y eliminar.
 - Confirmación antes de borrar listas, categorías o productos y antes de limpiar/restablecer.
 - Datos locales Room/SQLite sin acceso a Internet.
+- Copia manual en JSON (guardar y restaurar mediante el selector de archivos Android).
+- Importación validada antes de tocar los datos y restauración transaccional con confirmación.
+- Los archivos exportados no están cifrados: conservarlos en un lugar privado.
 
 ## Compilación
 
@@ -26,7 +29,7 @@ Abrir la carpeta raíz en Android Studio con JDK 17 y SDK 35. Para la línea de 
 
 ## Seguridad y restricciones
 
-La app no necesita permisos de red. El respaldo automático de Android está deshabilitado por el momento: desinstalar o borrar datos de la app elimina la base local. Antes de uso con datos importantes implementaremos exportación/restauración y copia de seguridad verificable.
+La app no necesita permisos de red. El respaldo automático de Android está deshabilitado por el momento: desinstalar o borrar datos de la app elimina la base local. La exportación y restauración manuales están implementadas, pero aún no están probadas en un dispositivo. Hasta validarlas, no depender de ellas como único respaldo.
 
 ## Pendiente
 

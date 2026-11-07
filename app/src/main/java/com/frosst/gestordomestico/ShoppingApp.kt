@@ -1,6 +1,9 @@
 package com.frosst.gestordomestico
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.text.style.TextOverflow
@@ -12,10 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 private val purchasedGreen = Color(0xFF16803C)
@@ -43,6 +49,45 @@ fun ShoppingApp(
     onThemeModeChanged: (ThemeMode) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    var showBackupDialog by remember { mutableStateOf(false) }
+    var pendingRestore by remember { mutableStateOf<ShoppingBackup?>(null) }
+
+    val saveBackup = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) scope.launch {
+            try {
+                val backup = withContext(Dispatchers.IO) { dao.exportBackup() }
+                val content = BackupCodec.encode(backup).toByteArray(Charsets.UTF_8)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
+                        stream.write(content)
+                    } ?: throw IllegalStateException("No se puede abrir el destino")
+                }
+                snackbar.showSnackbar("Copia de seguridad guardada")
+            } catch (e: Exception) {
+                snackbar.showSnackbar("No se pudo guardar la copia: ${e.message ?: "error desconocido"}")
+            }
+        }
+    }
+
+    val openBackup = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) scope.launch {
+            try {
+                pendingRestore = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        BackupCodec.decode(BackupCodec.readLimited(stream))
+                    } ?: throw IllegalStateException("No se puede abrir el archivo")
+                }
+            } catch (e: Exception) {
+                snackbar.showSnackbar("Copia no valida: ${e.message ?: "archivo no compatible"}")
+            }
+        }
+    }
     val lists by dao.observeLists().collectAsState(initial = emptyList())
     val categories by dao.observeCategories().collectAsState(initial = emptyList())
     val products by dao.observeProducts().collectAsState(initial = emptyList())
@@ -80,6 +125,7 @@ fun ShoppingApp(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth().statusBarsPadding(),
@@ -99,6 +145,9 @@ fun ShoppingApp(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                    if (listId == null) {
+                        TextButton(onClick = { showBackupDialog = true }) { Text("Copia") }
+                    }
                     TextButton(onClick = { themeDialogVisible = true }) { Text("Tema") }
                 }
             }
@@ -272,6 +321,77 @@ fun ShoppingApp(
                 }
             }
         }
+    }
+
+    if (showBackupDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupDialog = false },
+            title = { Text("Copia de seguridad") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Guarda o recupera todas las listas, categorias y productos.")
+                    Text(
+                        "El archivo JSON no esta cifrado. Guardalo en un lugar privado.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            showBackupDialog = false
+                            saveBackup.launch("gestor-domestico-copia.json")
+                        }
+                    ) { Text("Guardar copia") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            showBackupDialog = false
+                            openBackup.launch(arrayOf("application/json"))
+                        }
+                    ) { Text("Restaurar desde archivo") }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBackupDialog = false }) { Text("Cerrar") }
+            }
+        )
+    }
+
+    val backupToRestore = pendingRestore
+    if (backupToRestore != null) {
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("Confirmar restauracion") },
+            text = {
+                Text(
+                    "La copia contiene ${backupToRestore.lists.size} listas, " +
+                    "${backupToRestore.categories.size} categorias y " +
+                    "${backupToRestore.products.size} productos. " +
+                    "Restaurar sustituira TODOS los datos actuales del movil. " +
+                    "Guarda antes una copia si quieres conservarlos."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestore = null
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) { dao.restoreBackup(backupToRestore) }
+                            categoryId = null
+                            listId = null
+                            archived = false
+                            searchQuery = ""
+                            snackbar.showSnackbar("Copia restaurada correctamente")
+                        } catch (e: Exception) {
+                            snackbar.showSnackbar("No se pudo restaurar: ${e.message ?: "error desconocido"}")
+                        }
+                    }
+                }) { Text("Restaurar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestore = null }) { Text("Cancelar") }
+            }
+        )
     }
 
     if (themeDialogVisible) {
