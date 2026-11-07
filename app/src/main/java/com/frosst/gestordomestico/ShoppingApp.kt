@@ -3,6 +3,7 @@ package com.frosst.gestordomestico
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -36,7 +37,11 @@ private data class ConfirmRequest(
 )
 
 @Composable
-fun ShoppingApp(dao: ShoppingDao) {
+fun ShoppingApp(
+    dao: ShoppingDao,
+    themeMode: ThemeMode,
+    onThemeModeChanged: (ThemeMode) -> Unit
+) {
     val scope = rememberCoroutineScope()
     val lists by dao.observeLists().collectAsState(initial = emptyList())
     val categories by dao.observeCategories().collectAsState(initial = emptyList())
@@ -45,6 +50,7 @@ fun ShoppingApp(dao: ShoppingDao) {
     var listId by remember { mutableStateOf<String?>(null) }
     var categoryId by remember { mutableStateOf<String?>(null) }
     var archived by remember { mutableStateOf(false) }
+    var themeDialogVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     LaunchedEffect(listId, categoryId, archived) { searchQuery = "" }
     var edit by remember { mutableStateOf<EditRequest?>(null) }
@@ -75,15 +81,25 @@ fun ShoppingApp(dao: ShoppingDao) {
 
     Scaffold(
         topBar = {
-            Surface(tonalElevation = 3.dp) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().statusBarsPadding(),
+                tonalElevation = 3.dp
+            ) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (listId != null || archived) {
                         TextButton(onClick = { back() }) { Text("‹ Volver") }
                     }
-                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { themeDialogVisible = true }) { Text("Tema") }
                 }
             }
         },
@@ -125,7 +141,7 @@ fun ShoppingApp(dao: ShoppingDao) {
                         it.archived == archived && it.name.contains(searchQuery, ignoreCase = true)
                     }
                     if (visible.isEmpty()) {
-                        EmptyState(if (archived) "No tienes listas archivadas." else "No tienes listas. Pulsa + para crear una.")
+                        EmptyState(if (searchQuery.isNotBlank()) "Ninguna lista coincide con la busqueda." else if (archived) "No tienes listas archivadas." else "No tienes listas. Pulsa + para crear una.")
                     }
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 96.dp),
@@ -177,7 +193,7 @@ fun ShoppingApp(dao: ShoppingDao) {
                     val visible = categories.filter {
                         it.listId == listId && it.name.contains(searchQuery, ignoreCase = true)
                     }
-                    if (visible.isEmpty()) EmptyState("No hay categorías. Pulsa + para añadir una.")
+                    if (visible.isEmpty()) EmptyState(if (searchQuery.isNotBlank()) "Ninguna categoria coincide con la busqueda." else "No hay categorias. Pulsa + para añadir una.")
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -221,7 +237,7 @@ fun ShoppingApp(dao: ShoppingDao) {
                     })
                     val pending = filtered.filterNot { it.purchased }
                     val purchased = filtered.filter { it.purchased }
-                    if (filtered.isEmpty()) EmptyState("No hay productos. Pulsa + para añadir uno.")
+                    if (filtered.isEmpty()) EmptyState(if (searchQuery.isNotBlank()) "Ningun producto coincide con la busqueda." else "No hay productos. Pulsa + para añadir uno.")
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -256,6 +272,42 @@ fun ShoppingApp(dao: ShoppingDao) {
                 }
             }
         }
+    }
+
+    if (themeDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { themeDialogVisible = false },
+            title = { Text("Apariencia") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onThemeModeChanged(mode)
+                                    themeDialogVisible = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = themeMode == mode,
+                                onClick = {
+                                    onThemeModeChanged(mode)
+                                    themeDialogVisible = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(mode.label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { themeDialogVisible = false }) { Text("Cerrar") }
+            }
+        )
     }
 
     val currentEdit = edit

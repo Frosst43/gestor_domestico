@@ -7,6 +7,9 @@ Aplicación Android para compras universales, no limitada a alimentación.
 ## Base de desarrollo 0.1.0
 
 - Crear y renombrar listas y categorías.
+- Apariencia automática según Android, u opción manual de tema oscuro/claro, guardada localmente.
+- Cabecera compatible con la barra de estado de Android; títulos largos abreviados sin solaparse.
+- Mensajes específicos cuando una búsqueda no devuelve resultados.
 - Crear y editar productos (nombre, cantidad/unidad, notas).
 - Buscar listas, categorías y productos (por nombre o notas).
 - Al completar una compra, acceso visible a reutilizar, archivar o eliminar.
