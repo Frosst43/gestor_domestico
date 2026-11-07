@@ -8,6 +8,8 @@ Aplicación Android para compras universales, no limitada a alimentación.
 
 - Crear y renombrar listas y categorías.
 - Crear y editar productos (nombre, cantidad/unidad, notas).
+- Buscar listas, categorías y productos (por nombre o notas).
+- Al completar una compra, acceso visible a reutilizar, archivar o eliminar.
 - Marcar comprado con casilla verde y tachado visible: los comprados pasan al final de su categoría.
 - Progreso y aviso de compra completada solo cuando hay productos y todos están comprados.
 - Duplicar lista: se copian sus categorías y productos, que comienzan todos pendientes.

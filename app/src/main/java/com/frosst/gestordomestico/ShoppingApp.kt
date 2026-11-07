@@ -45,6 +45,8 @@ fun ShoppingApp(dao: ShoppingDao) {
     var listId by remember { mutableStateOf<String?>(null) }
     var categoryId by remember { mutableStateOf<String?>(null) }
     var archived by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    LaunchedEffect(listId, categoryId, archived) { searchQuery = "" }
     var edit by remember { mutableStateOf<EditRequest?>(null) }
     var confirm by remember { mutableStateOf<ConfirmRequest?>(null) }
 
@@ -100,13 +102,28 @@ fun ShoppingApp(dao: ShoppingDao) {
         Column(
             Modifier.fillMaxSize().padding(insets).padding(horizontal = 16.dp)
         ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = {
+                    Text(when {
+                        categoryId != null -> "Buscar productos"
+                        listId != null -> "Buscar categorías"
+                        else -> "Buscar listas"
+                    })
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp)
+            )
             when {
                 listId == null -> {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(onClick = { archived = false }) { Text("Listas activas") }
                         TextButton(onClick = { archived = true }) { Text("Archivadas") }
                     }
-                    val visible = lists.filter { it.archived == archived }
+                    val visible = lists.filter {
+                        it.archived == archived && it.name.contains(searchQuery, ignoreCase = true)
+                    }
                     if (visible.isEmpty()) {
                         EmptyState(if (archived) "No tienes listas archivadas." else "No tienes listas. Pulsa + para crear una.")
                     }
@@ -157,7 +174,9 @@ fun ShoppingApp(dao: ShoppingDao) {
                     }
                 }
                 categoryId == null -> {
-                    val visible = categories.filter { it.listId == listId }
+                    val visible = categories.filter {
+                        it.listId == listId && it.name.contains(searchQuery, ignoreCase = true)
+                    }
                     if (visible.isEmpty()) EmptyState("No hay categorías. Pulsa + para añadir una.")
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 96.dp),
@@ -194,7 +213,12 @@ fun ShoppingApp(dao: ShoppingDao) {
                     }
                 }
                 else -> {
-                    val filtered = purchaseOrder(products.filter { it.categoryId == categoryId })
+                    val filtered = purchaseOrder(products.filter {
+                        it.categoryId == categoryId && (
+                            it.name.contains(searchQuery, ignoreCase = true) ||
+                            it.notes.contains(searchQuery, ignoreCase = true)
+                        )
+                    })
                     val pending = filtered.filterNot { it.purchased }
                     val purchased = filtered.filter { it.purchased }
                     if (filtered.isEmpty()) EmptyState("No hay productos. Pulsa + para añadir uno.")
@@ -335,7 +359,16 @@ private fun ShoppingListCard(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
                 )
             }
-            if (progress.completed) Text("✓ Compra completada", color = purchasedGreen)
+            if (progress.completed) {
+                Text("✓ Compra completada", color = purchasedGreen)
+                if (!list.archived) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        TextButton(onClick = onReset) { Text("Reutilizar") }
+                        TextButton(onClick = onArchive) { Text("Archivar") }
+                        TextButton(onClick = onDelete) { Text("Eliminar") }
+                    }
+                }
+            }
         }
     }
 }
