@@ -125,13 +125,18 @@ interface ShoppingDao {
         products = allProducts()
     )
 
-    // Room executes this method in a single transaction; failed imports roll back.
+    // Validate a stable snapshot before any destructive operation.
+    // Room rolls the whole transaction back if an insert fails.
     @Transaction
     suspend fun restoreBackup(backup: ShoppingBackup) {
+        val snapshot = ShoppingBackup(
+            backup.lists.toList(), backup.categories.toList(), backup.products.toList()
+        )
+        BackupCodec.validate(snapshot)
         deleteAllLists()
-        backup.lists.forEach { addList(it) }
-        backup.categories.forEach { addCategory(it) }
-        backup.products.forEach { addProduct(it) }
+        snapshot.lists.forEach { addList(it) }
+        snapshot.categories.forEach { addCategory(it) }
+        snapshot.products.forEach { addProduct(it) }
     }
 
     @Transaction
