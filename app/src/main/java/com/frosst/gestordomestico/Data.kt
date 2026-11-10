@@ -160,10 +160,11 @@ interface ShoppingDao {
 }
 
 @Database(
-    entities = [ShoppingList::class, Category::class, Product::class],
-    version = 1,
+    entities = [ShoppingList::class, Category::class, Product::class, LocalSyncIdentity::class, LocalChange::class],
+    version = 2,
     exportSchema = false
 )
 abstract class ShoppingDatabase : RoomDatabase() {
     abstract fun shoppingDao(): ShoppingDao
+    abstract fun syncJournalDao(): SyncJournalDao
 }

@@ -30,7 +30,10 @@ enum class ThemeMode(val key: String, val label: String) {
 
 class ShoppingApplication : Application() {
     val database: ShoppingDatabase by lazy {
-        Room.databaseBuilder(applicationContext, ShoppingDatabase::class.java, "shopping.db").build()
+        Room.databaseBuilder(applicationContext, ShoppingDatabase::class.java, "shopping.db")
+            .addMigrations(SyncJournalSchema.MIGRATION_1_2)
+            .addCallback(SyncJournalSchema.onCreate)
+            .build()
     }
 }
 
