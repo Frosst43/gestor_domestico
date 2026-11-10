@@ -1,18 +1,25 @@
 package com.frosst.gestordomestico
 
 import android.app.Application
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
@@ -62,15 +69,23 @@ class MainActivity : ComponentActivity() {
             }
 
             MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-                ShoppingApp(
-                    dao = dao,
-                    themeMode = themeMode,
-                    session = session,
-                    onThemeModeChanged = { selected ->
-                        themeMode = selected
-                        settings.edit().putString("theme_mode", selected.key).apply()
-                    }
-                )
+                Box(Modifier.fillMaxSize()) {
+                    ShoppingApp(
+                        dao = dao,
+                        themeMode = themeMode,
+                        session = session,
+                        onThemeModeChanged = { selected ->
+                            themeMode = selected
+                            settings.edit().putString("theme_mode", selected.key).apply()
+                        }
+                    )
+                    // Uses the existing bottom clearance reserved for floating actions.
+                    ElevatedButton(
+                        onClick = { startActivity(Intent(this@MainActivity, LinkActivity::class.java)) },
+                        modifier = Modifier.align(Alignment.BottomStart).navigationBarsPadding()
+                            .padding(start = 16.dp, bottom = 16.dp)
+                    ) { Text("Dispositivos") }
+                }
             }
         }
     }
