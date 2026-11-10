@@ -1,17 +1,37 @@
-# Gestor domestico
+# Gestor doméstico
 
-Aplicacion Android para listas de compras universales, organizada como **listas -> categorias -> productos**.
+Aplicación Android para compras universales, no limitada a alimentación.
 
-Estado: desarrollo inicial. No hay APK publicado ni sincronizacion entre dispositivos.
+**Organización:** listas independientes → categorías → productos. No existe un límite artificial de listas ni de categorías. Nombres como «Compra semanal», «Componentes PC» y «Necesidades casa» son ejemplos, no listas obligatorias.
 
-## Alcance acordado
+## Base de desarrollo 0.1.0
 
-- Listas independientes e ilimitadas; ejemplos: Compra semanal, Componentes PC, Necesidades casa.
-- Categorias y productos personalizables; cantidades y notas.
-- Articulos comprados con marca verde y texto tachado, ordenados despues de los pendientes.
-- Progreso, duplicacion, reutilizacion, vaciado de comprados, archivo y eliminacion con confirmacion.
-- Persistencia local sin conexion; sincronizacion entre moviles y gestion de gastos quedan para versiones posteriores.
+- Crear y renombrar listas y categorías.
+- Apariencia automática según Android, u opción manual de tema oscuro/claro, guardada localmente.
+- Cabecera compatible con la barra de estado de Android; títulos largos abreviados sin solaparse.
+- Mensajes específicos cuando una búsqueda no devuelve resultados.
+- Crear y editar productos (nombre, cantidad/unidad, notas).
+- Añadir productos rápidamente desde una lista: elegir categoría y apuntar varios seguidos sin navegar a cada categoría.
+- Buscar listas, categorías y productos (por nombre o notas).
+- Al completar una compra, acceso visible a reutilizar, archivar o eliminar.
+- Marcar comprado con casilla verde y tachado visible: los comprados pasan al final de su categoría.
+- Progreso y aviso de compra completada solo cuando hay productos y todos están comprados.
+- Duplicar lista: se copian sus categorías y productos, que comienzan todos pendientes.
+- Archivar/recuperar listas, reutilizar (desmarcar), vaciar comprados y eliminar.
+- Confirmación antes de borrar listas, categorías o productos y antes de limpiar/restablecer.
+- Datos locales Room/SQLite sin acceso a Internet.
+- Copia manual en JSON (guardar y restaurar mediante el selector de archivos Android).
+- Importación validada antes de tocar los datos y restauración transaccional con confirmación.
+- Los archivos exportados no están cifrados: conservarlos en un lugar privado.
 
-## Desarrollo
+## Compilación
 
-El codigo de Android se desarrolla en ramas separadas antes de integrarse en `main`.
+Abrir la carpeta raíz en Android Studio con JDK 17 y SDK 35. Para la línea de comandos se necesita Gradle 8.14 (la rama todavía no incorpora los binarios del wrapper); ejecutar `gradle :app:testDebugUnitTest :app:assembleDebug`. El flujo GitHub Actions realiza exactamente esta compilación y publica un APK debug como artefacto **solo si termina correctamente**.
+
+## Seguridad y restricciones
+
+La app no necesita permisos de red. El respaldo automático de Android está deshabilitado por el momento: desinstalar o borrar datos de la app elimina la base local. La exportación y restauración manuales están implementadas, pero aún no están probadas en un dispositivo. Hasta validarlas, no depender de ellas como único respaldo.
+
+## Pendiente
+
+Compilación y prueba con dispositivo real; mejoras de accesibilidad, buscador y recuperación/exportación; sincronización entre dos móviles, gastos, presupuestos y estadísticas para versiones futuras. No fusionar en `main` sin validación.
