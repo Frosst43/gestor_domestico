@@ -37,8 +37,6 @@ private fun SSLSocket.harden() {
     enabledCipherSuites = ciphers(supportedCipherSuites).also { check(it.isNotEmpty()) }
     soTimeout = 5_000
 }
-
-/** Explicitly cancel the sockets as well as the coroutine that initiated them. */
 class LinkCall : Closeable {
     private val cancelled = AtomicBoolean(false)
     private val sockets = CopyOnWriteArrayList<Closeable>()
@@ -52,8 +50,6 @@ class LinkCall : Closeable {
         sockets.clear()
     }
 }
-
-/** Pin transferred out-of-band in an invitation, never learned from an untrusted connection. */
 fun pinnedClientContext(fingerprint: String): SSLContext {
     LanPolicy.hex(fingerprint)
     val trust = object : X509TrustManager {
@@ -71,20 +67,20 @@ fun pinnedClientContext(fingerprint: String): SSLContext {
     return SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), SecureRandom()) }
 }
 
-/** Connection test only: no read/write endpoint for shopping data is exposed. */
+/** Shopping endpoint is opt-in. PAIR/PROBE alone never enable data sharing. */
 class LanLinkServer(
     private val tls: SSLContext,
     private val gate: PairingGate,
     private val fingerprint: String,
     private val allowLoopback: Boolean = false,
-    private val onPaired: () -> Unit = {}
+    private val onPaired: () -> Unit = {},
+    private val onExchange: ((String, ByteArray) -> ByteArray)? = null
 ) : Closeable {
     private val closed = AtomicBoolean(false)
     private val sockets = Collections.newSetFromMap(ConcurrentHashMap<SSLSocket, Boolean>())
     private val deadlines = Executors.newSingleThreadScheduledExecutor(daemonThreads)
     private val workers = ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue(2), daemonThreads)
     @Volatile private var listener: SSLServerSocket? = null
-
     @Synchronized
     fun start(host: String, port: Int = 38473): LinkEndpoint {
         check(listener == null && !closed.get()) { "El servidor no puede arrancarse dos veces" }
@@ -96,14 +92,13 @@ class LanLinkServer(
             socket.reuseAddress = true
             socket.enabledProtocols = protocols(socket.supportedProtocols).also { check(it.isNotEmpty()) }
             socket.enabledCipherSuites = ciphers(socket.supportedCipherSuites).also { check(it.isNotEmpty()) }
-            socket.needClientAuth = false // Pairing credential authenticates the client INSIDE pinned TLS.
+            socket.needClientAuth = false
             socket.bind(InetSocketAddress(InetAddress.getByName(host), port), 4)
             listener = socket
             daemonThreads.newThread { acceptLoop(socket) }.start()
             return LinkEndpoint(host, socket.localPort, gate.serverId, fingerprint).checked(allowLoopback)
         } catch (error: Exception) { socket.close(); close(); throw error }
     }
-
     private fun acceptLoop(listener: SSLServerSocket) {
         try {
             while (!closed.get()) {
@@ -111,7 +106,6 @@ class LanLinkServer(
                 sockets.add(socket)
                 if (closed.get()) { socket.close(); sockets.remove(socket); break }
                 try {
-                    // Includes queue time, handshake and reads: no unlimited slow connections.
                     val timeout = deadlines.schedule({ try { socket.close() } catch (_: IOException) {} }, 10, TimeUnit.SECONDS)
                     try {
                         workers.execute {
@@ -121,72 +115,72 @@ class LanLinkServer(
                                 sockets.remove(socket)
                             }
                         }
-                    } catch (error: RejectedExecutionException) {
-                        timeout.cancel(false); socket.close(); sockets.remove(socket)
-                    }
+                    } catch (_: RejectedExecutionException) { timeout.cancel(false); socket.close(); sockets.remove(socket) }
                 } catch (_: RejectedExecutionException) { socket.close(); sockets.remove(socket) }
             }
         } catch (_: IOException) { close() }
     }
-
     private fun handle(socket: SSLSocket) {
         try {
-            socket.harden()
-            socket.startHandshake()
+            socket.harden(); socket.startHandshake()
             val request = LinkWire.read(socket.inputStream)
-            val paired = request.size == 4 && request[0] == "PAIR" &&
-                gate.pair(request[1], request[2], request[3])
-            val allowed = paired || (request.size == 3 && request[0] == "PROBE" &&
-                gate.authorized(request[1], request[2]))
+            if (request.size == 3 && request[0] == "SHOPPING-1" && onExchange != null && gate.authorized(request[1], request[2])) {
+                LinkWire.write(socket.outputStream, listOf("OK", gate.serverId, request[1]))
+                val payload = LinkPayload.read(socket.inputStream)
+                // Check AGAIN after reading. Revocation and the transaction have one ordering.
+                val response = gate.authorizedAction(request[1], request[2]) {
+                    check(!closed.get())
+                    onExchange.invoke(request[1], payload)
+                }
+                LinkPayload.write(socket.outputStream, response)
+                return
+            }
+            val paired = request.size == 4 && request[0] == "PAIR" && gate.pair(request[1], request[2], request[3])
+            val allowed = paired || (request.size == 3 && request[0] == "PROBE" && gate.authorized(request[1], request[2]))
             LinkWire.write(socket.outputStream, if (allowed) listOf("OK", gate.serverId, request[1]) else listOf("DENIED"))
             if (paired) onPaired()
         } catch (_: Exception) {
-            // No credential, invitation or database contents are logged or reflected to the peer.
+            // A lost acknowledgment is recovered via the durable outbox/receipt, not by guessing success.
+            // Never reflect credentials, database contents or exception details to the peer.
         }
     }
-
     @Synchronized
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         gate.cancelInvitation()
         try { listener?.close() } catch (_: IOException) {}
         sockets.forEach { try { it.close() } catch (_: IOException) {} }
-        sockets.clear()
-        workers.shutdownNow()
-        deadlines.shutdownNow()
+        sockets.clear(); workers.shutdownNow(); deadlines.shutdownNow()
     }
 }
-
 class LinkDenied : IOException("El servidor no ha autorizado este dispositivo")
-
 object LanLinkClient {
-    fun pair(invitation: LinkInvitation, client: ClientLink, call: LinkCall = LinkCall(),
-             allowLoopback: Boolean = false): String {
-        require(invitation.endpoint == client.endpoint) { "Invitacion y destino distintos" }
-        LanPolicy.hex(invitation.secret)
-        return exchange(client, listOf("PAIR", client.deviceId, client.token, invitation.secret), call, allowLoopback)
+    fun pair(invitation: LinkInvitation, client: ClientLink, call: LinkCall = LinkCall(), allowLoopback: Boolean = false): String {
+        require(invitation.endpoint == client.endpoint); LanPolicy.hex(invitation.secret)
+        return exchange(client, listOf("PAIR", client.deviceId, client.token, invitation.secret), call, allowLoopback) { it.session.protocol }
     }
     fun probe(client: ClientLink, call: LinkCall = LinkCall(), allowLoopback: Boolean = false): String =
-        exchange(client, listOf("PROBE", client.deviceId, client.token), call, allowLoopback)
-
-    private fun exchange(client: ClientLink, fields: List<String>, call: LinkCall, allowLoopback: Boolean): String {
+        exchange(client, listOf("PROBE", client.deviceId, client.token), call, allowLoopback) { it.session.protocol }
+    fun exchangePurchases(client: ClientLink, payload: ByteArray, call: LinkCall = LinkCall(), allowLoopback: Boolean = false): ByteArray {
+        require(payload.size in 6..LinkPayload.MAX_BYTES)
+        return exchange(client, listOf("SHOPPING-1", client.deviceId, client.token), call, allowLoopback) { socket ->
+            LinkPayload.write(socket.outputStream, payload)
+            LinkPayload.read(socket.inputStream)
+        }
+    }
+    private fun <T> exchange(client: ClientLink, fields: List<String>, call: LinkCall, allowLoopback: Boolean, body: (SSLSocket) -> T): T {
         val endpoint = client.endpoint.checked(allowLoopback)
         LanPolicy.id(client.deviceId); LanPolicy.hex(client.token)
-        require(client.deviceId != endpoint.serverId) { "No puedes vincular el movil consigo mismo" }
+        require(client.deviceId != endpoint.serverId)
         val timeout = clientDeadline.schedule({ call.close() }, 10, TimeUnit.SECONDS)
         try {
-            val raw = Socket()
-            call.track(raw)
+            val raw = Socket(); call.track(raw)
             raw.connect(InetSocketAddress(endpoint.host, endpoint.port), 5_000)
-            val tls = pinnedClientContext(endpoint.fingerprint).socketFactory
-                .createSocket(raw, endpoint.host, endpoint.port, true) as SSLSocket
-            call.track(tls)
-            tls.harden()
-            tls.startHandshake() // Certificate pin MUST pass before writing the secret/token.
+            val tls = pinnedClientContext(endpoint.fingerprint).socketFactory.createSocket(raw, endpoint.host, endpoint.port, true) as SSLSocket
+            call.track(tls); tls.harden(); tls.startHandshake()
             LinkWire.write(tls.outputStream, fields)
-            val reply = LinkWire.read(tls.inputStream)
-            if (reply != listOf("OK", endpoint.serverId, client.deviceId)) throw LinkDenied()
-            return tls.session.protocol
+            if (LinkWire.read(tls.inputStream) != listOf("OK", endpoint.serverId, client.deviceId)) throw LinkDenied()
+            return body(tls)
         } finally { timeout.cancel(false); call.close() }
     }
 }
